@@ -51,10 +51,14 @@ fn irc_write_loop(server: &IrcServer) {
 
 fn process_irc_message(message: &Message, redis_conn: &redis::Connection) {
     let irc_command: String = From::from(&message.command);
+    /* increment counter */
     let new_count = redis_conn.incr("irc-read-cnt", 1).unwrap_or(0i64);
+    /* append information */
     redis_conn.rpush("irc-read", format!("{} {}",new_count, irc_command)).unwrap_or(());
+    /* preserve recent 100 logs */
     redis_conn.ltrim("irc-read", -100, -1).unwrap_or(());
-    println!("[debug] processed message");
+    /* publish read information */
+    redis::cmd("PUBLISH").arg("irc-read").arg(new_count).execute(redis_conn);
 }
 
 fn irc_read_loop(server: &IrcServer) {
