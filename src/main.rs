@@ -39,6 +39,8 @@ fn irc_write_loop(server: &IrcServer) {
                         Ok(_) => (),
                         Err(x) => println!("[redis->irc] sending command failed {:?}", x)
                     }
+                    /* flood protection: sleep for a second */
+                    thread::sleep(Duration::new(1, 0));
                 } else if let Err(e) = parsed {
                     println!("[redis->irc] irc-write parse error {:?}", e);
                 }
