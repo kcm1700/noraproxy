@@ -50,7 +50,7 @@ fn irc_write_loop(server: &IrcServer) {
 }
 
 fn process_irc_message(message: &Message, redis_conn: &redis::Connection) {
-    let irc_command: String = From::from(&message.command);
+    let irc_command: String = message.to_string();
     /* increment counter */
     let new_count = redis_conn.incr("irc-read-cnt", 1).unwrap_or(0i64);
     /* append information */
