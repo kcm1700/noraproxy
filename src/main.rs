@@ -11,8 +11,14 @@ use clap::{Arg, App};
 use irc::client::prelude::*;
 use redis::Commands;
 
-fn irc_write_loop(server: &IrcServer) {
-    let redis_client = match redis::Client::open("redis://localhost/1") {
+#[derive(Clone, Debug)]
+struct AppConfig {
+    redis_address: String,
+    history_count: isize
+}
+
+fn irc_write_loop(server: &IrcServer, config: &AppConfig) {
+    let redis_client = match redis::Client::open(&*config.redis_address) {
         Ok(x) => x,
         Err(x) => {
             println!("Panic redis client {:?}", x);
@@ -49,20 +55,20 @@ fn irc_write_loop(server: &IrcServer) {
     }
 }
 
-fn process_irc_message(message: &Message, redis_conn: &redis::Connection) {
+fn process_irc_message(message: &Message, redis_conn: &redis::Connection, config: &AppConfig) {
     let irc_command: String = message.to_string();
     /* increment counter */
     let new_count = redis_conn.incr("irc-read-cnt", 1).unwrap_or(0i64);
     /* append information */
     redis_conn.rpush("irc-read", format!("{} {}",new_count, irc_command)).unwrap_or(());
     /* preserve recent 100 logs */
-    redis_conn.ltrim("irc-read", -100, -1).unwrap_or(());
+    redis_conn.ltrim("irc-read", -config.history_count, -1).unwrap_or(());
     /* publish read information */
     redis::cmd("PUBLISH").arg("irc-read").arg(new_count).execute(redis_conn);
 }
 
-fn irc_read_loop(server: &IrcServer) {
-    let redis_client = match redis::Client::open("redis://localhost/1") {
+fn irc_read_loop(server: &IrcServer, config: &AppConfig) {
+    let redis_client = match redis::Client::open(&*config.redis_address) {
         Ok(x) => x,
         Err(x) => {
             println!("Panic redis client {:?}", x);
@@ -79,7 +85,7 @@ fn irc_read_loop(server: &IrcServer) {
     loop {
         for wrapped_message in server.iter() {
             match wrapped_message {
-                Ok(ref message) => process_irc_message(message, &redis_connection),
+                Ok(ref message) => process_irc_message(message, &redis_connection, config),
                 Err(e) => println!("[Error] {:?}", e)
             }
         }
@@ -101,8 +107,25 @@ fn main() {
                         .value_name("CONFIG")
                         .help("Sets the config file for irc [default: config.json]")
                         .takes_value(true))
+                    .arg(Arg::with_name("redis")
+                        .short("r")
+                        .long("redis")
+                        .value_name("REDIS")
+                        .help("Specify redis address [default: redis://localhost/1]")
+                        .takes_value(true))
+                    .arg(Arg::with_name("history")
+                        .short("h")
+                        .long("history-length")
+                        .value_name("history")
+                        .help("number of lines to be saved in the redis db [default: 1000]")
+                        .takes_value(true))
                     .get_matches();
     let config_path = arg_matches.value_of("config").unwrap_or("config.json");
+    let redis_addr: String = arg_matches.value_of("redis").unwrap_or("redis://localhost/1").to_string();
+    let app_config = AppConfig {
+        redis_address: redis_addr,
+        history_count: 1000
+    };
     let config = match Config::load(config_path) {
         Ok(x) => x,
         Err(x) => {
@@ -127,15 +150,17 @@ fn main() {
     };
 
     let write_server = server.clone();
+    let cloned_config = app_config.clone();
     let irc_send_thread = thread::spawn(move || {
         let server = write_server;
-        irc_write_loop(&server);
+        irc_write_loop(&server, &cloned_config);
     });
 
     let read_server = server.clone();
+    let cloned_config = app_config.clone();
     let irc_recv_thread = thread::spawn(move || {
         let server = read_server;
-        irc_read_loop(&server);
+        irc_read_loop(&server, &cloned_config);
     });
 
     let _ = irc_send_thread.join();
