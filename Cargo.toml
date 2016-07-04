@@ -1,0 +1,9 @@
+[package]
+name = "noraproxy"
+version = "0.1.0"
+authors = ["ChanMin Kim <kcm1700@gmail.com>"]
+
+[dependencies]
+redis = "0.5.3"
+irc = "0.11.3"
+clap = "2.9.1"
