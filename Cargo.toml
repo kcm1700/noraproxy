@@ -5,5 +5,5 @@ authors = ["ChanMin Kim <kcm1700@gmail.com>"]
 
 [dependencies]
 redis = "0.5.3"
-irc = "0.11.3"
+irc = { version="0.11.4" }
 clap = "2.9.1"
